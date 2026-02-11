@@ -13,19 +13,40 @@ class C:
     ENDC = "\033[0m"
 
 
+# Default pause (seconds) used after each printed line to add drama
+DEFAULT_LINE_PAUSE = 0.5
 def clear():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def print_slow(text, delay=0.02):
+def print_pause(text="", delay=DEFAULT_LINE_PAUSE, end="\n"):
+    print(text, end=end, flush=True)
+    time.sleep(delay)
+
+
+def print_slow(text, char_delay=0.02, end_delay=DEFAULT_LINE_PAUSE):
     for ch in text:
         print(ch, end='', flush=True)
-        time.sleep(delay)
+        time.sleep(char_delay)
     print()
+    time.sleep(end_delay)
+
+
+def print_line(text="", pause=DEFAULT_LINE_PAUSE, end="\n"):
+    """Print a full line then pause for `pause` seconds."""
+    print(text, end=end, flush=True)
+    time.sleep(pause)
+
+
+def input_prompt(prompt="", pause=DEFAULT_LINE_PAUSE):
+    """Print a prompt, pause `pause` seconds, then read input from the user."""
+    print(prompt, end='', flush=True)
+    time.sleep(pause)
+    return input()
 
 
 def header():
-    print(C.OKCYAN + """
+        print_pause(C.OKCYAN + """
   *************************************************
   *          PETUALANGAN DI HUTAN MISTERIUS       *
   *************************************************
@@ -34,41 +55,77 @@ def header():
 
 # Entitas pemain / musuh dan fungsi pertempuran
 class Entity:
-    def __init__(self, name, hp, attack_range):
+    def __init__(self, name, hp, attack_range, difficulty=1.0):
         self.name = name
         self.hp = hp
         self.attack_range = attack_range
+        self.difficulty = difficulty
+        self.base_hp = hp
 
     def attack(self):
         return random.randint(*self.attack_range)
 
 
 def combat(player: Entity, enemy: Entity):
-    print()
-    print_slow(f"Tiba-tiba, {enemy.name} muncul dari balik bayangan!", 0.02)
+    print_pause()
+    print_slow(f"Tiba-tiba, {enemy.name} muncul dari balik bayangan! (Level musuh ~{int(enemy.difficulty*player.level)})", 0.02)
     while enemy.hp > 0 and player.hp > 0:
-        print(f"\nNyawamu: {player.hp}  |  {enemy.name} HP: {enemy.hp}")
-        aksi = input("Pilih aksi: 1) Serang   2) Lari  -> ").strip().lower()
+        print_pause(f"\nNyawamu: {player.hp}  |  {enemy.name} HP: {enemy.hp}")
+        aksi = input_prompt("Pilih aksi: 1) Serang   2) Lari  -> ").strip().lower()
         if aksi in ("1", "serang", "s"):
             dmg = player.attack()
             enemy.hp -= dmg
             print_slow(C.OKGREEN + f"Kau menyerang dan memberi {dmg} kerusakan!" + C.ENDC, 0.01)
             if enemy.hp <= 0:
                 print_slow(C.OKCYAN + f"{enemy.name} tumbang. Kau menang!" + C.ENDC, 0.02)
-                return True
+                return 'victory'
             edmg = enemy.attack()
             player.hp -= edmg
             print_slow(C.FAIL + f"{enemy.name} menyerang balik dan memberikan {edmg} kerusakan!" + C.ENDC, 0.01)
         elif aksi in ("2", "lari", "l"):
             print_slow(C.WARNING + "Kau memilih mundur dengan cepat, selamat... untuk sekarang." + C.ENDC, 0.02)
-            return True
+            return 'escaped'
         else:
-            print_slow(C.WARNING + "Aksi tidak dikenali. Ketik 'serang' atau 'lari'." + C.ENDC, 0.01)
+            print_slow(C.WARNING + "Aksi tidak dikenali. Ketik '1' atau '2'." + C.ENDC, 0.01)
 
     if player.hp <= 0:
         print_slow(C.FAIL + "Kau roboh. Petualangan berakhir..." + C.ENDC, 0.02)
-        return False
-    return True
+        return 'dead'
+    return 'unknown'
+
+
+def create_enemy(name: str, base_hp: int, base_attack: tuple, difficulty_str: str, player_level: int):
+    # difficulty_str: 'normal'|'hard'|'elite'
+    mult_map = {'normal': 1.0, 'hard': 1.25, 'elite': 1.6}
+    mult = mult_map.get(difficulty_str, 1.0)
+    # scale with player level
+    lvl_scale = 1.0 + (player_level - 1) * 0.05
+    hp = max(1, int(base_hp * mult * lvl_scale))
+    low = max(1, int(base_attack[0] * mult * lvl_scale))
+    high = max(low + 1, int(base_attack[1] * mult * lvl_scale))
+    enemy = Entity(name, hp, (low, high), difficulty=mult)
+    enemy.base_hp = base_hp
+    return enemy
+
+
+def award_xp_and_maybe_level(player: Entity, enemy: Entity):
+    # simple XP: 10 * difficulty
+    xp_gain = int(10 * enemy.difficulty + (enemy.base_hp // 5))
+    player.xp = getattr(player, 'xp', 0) + xp_gain
+    print_slow(C.OKGREEN + f"[XP +{xp_gain}] Sekarang XP: {player.xp}" + C.ENDC, 0.02)
+    # level up threshold
+    leveled = False
+    while player.xp >= player.level * 15:
+        player.xp -= player.level * 15
+        player.level += 1
+        player.base_hp = getattr(player, 'base_hp', player.hp) + 5
+        player.hp = min(player.hp + 8, player.base_hp)
+        # increase attack max
+        low, high = player.attack_range
+        player.attack_range = (low, high + 1)
+        print_slow(C.OKCYAN + f"== LEVEL UP! Sekarang level {player.level}. HP dan serangan meningkat! ==" + C.ENDC, 0.03)
+        leveled = True
+    return leveled
 
 
 def scene_meet_local_and_first_battle(player: Entity, inventory: dict):
@@ -78,22 +135,23 @@ def scene_meet_local_and_first_battle(player: Entity, inventory: dict):
     print_slow("🌲 Arden memasuki Hutan Misterius, di mana udara dipenuhi suara burung dan pohon-pohon tinggi...", 0.01)
     time.sleep(0.3)
     print_slow("Seorang penduduk lokal muncul—seorang wanita tua berjubah yang ramah. 🧓✨", 0.02)
-    print()
+    print_pause()
     print_slow("'Sumber kehidupan ada di dalam hutan, tetapi kamu harus berhati-hati.'", 0.02)
     print_slow("'Ada banyak bahaya di sini, termasuk monster-monster yang mengancam nyawa.'", 0.02)
-    print()
+    print_pause()
     print_slow("Wanita itu memberikanmu peta kecil dan sebotol ramuan penyembuh. 🗺️🧪", 0.02)
     inventory.setdefault('potions', 0)
     inventory['potions'] += 1
     print_slow(C.OKGREEN + "[Dapat] 1x Ramuan Penyembuh" + C.ENDC, 0.02)
-    print()
+    print_pause()
 
     # Pertemuan pertama: serigala bermata merah
     print_slow("Di sela-sela semak, mata merah menyala menatapmu... 🐺🔥", 0.02)
-    enemy = Entity("Red-Eyed Wolf 🐺", 22, (5, 9))
-    won = combat(player, enemy)
+    enemy = create_enemy("Red-Eyed Wolf 🐺", 22, (5, 9), 'normal', player.level)
+    result = combat(player, enemy)
 
-    if won and player.hp > 0 and enemy.hp <= 0:
+    if result == 'victory' and player.hp > 0:
+        award_xp_and_maybe_level(player, enemy)
         print_slow(C.OKCYAN + "Dengan kemampuan dan strategimu, Arden berhasil mengalahkan monster itu." + C.ENDC, 0.02)
         # Reward: obat-obatan (potion sudah diberikan) dan upgrade kemampuan
         print_slow("Kau menemukan beberapa obat-obatan dan sebuah kristal yang meningkatkan seranganmu. ✨⚔️", 0.02)
@@ -102,8 +160,8 @@ def scene_meet_local_and_first_battle(player: Entity, inventory: dict):
         low, high = player.attack_range
         player.attack_range = (low, high + 2)
         print_slow(C.OKGREEN + f"[Upgrade] Serangan maksimum bertambah menjadi {player.attack_range[1]}" + C.ENDC, 0.02)
-        # sedkit penyembuhan
-        player.hp = min(player.hp + 10, 40)
+        # sedikit penyembuhan
+        player.hp = min(player.hp + 10, getattr(player, 'base_hp', 40))
         print_slow(C.OKGREEN + f"Arden sembuh sedikit: Nyawa sekarang {player.hp}" + C.ENDC, 0.02)
     else:
         print_slow(C.WARNING + "Pertempuran berakhir tanpa hadiah." + C.ENDC, 0.02)
@@ -112,7 +170,7 @@ def scene_meet_local_and_first_battle(player: Entity, inventory: dict):
 def trap_encounter(player: Entity):
     print_slow("Saat berjalan pelan, tanah di hadapanmu terasa rapuh...", 0.02)
     print_slow("Kau melihat ada jebakan tersembunyi.", 0.02)
-    pilihan = input("Apa yang kau lakukan? ('periksa'/'lewati'): ").strip().lower()
+    pilihan = input_prompt("Apa yang kau lakukan? ('periksa'/'lewati'): ").strip().lower()
     if pilihan in ("periksa", "p"):
         success = random.random() < 0.75
         if success:
@@ -124,16 +182,16 @@ def trap_encounter(player: Entity):
             print_slow(C.FAIL + f"Ups! Sebuah panah menyentuhmu. Kau kehilangan {dmg} nyawa." + C.ENDC, 0.02)
             return False
     else:
-        # langsung lewat -> lebih berisiko
-        success = random.random() < 0.5
-        if success:
-            print_slow(C.OKGREEN + "Dengan cekatan kau melompati jebakan." + C.ENDC, 0.02)
-            return True
-        else:
-            dmg = random.randint(5, 12)
-            player.hp -= dmg
-            print_slow(C.FAIL + f"Tanah runtuh! Kau terkena {dmg} kerusakan." + C.ENDC, 0.02)
-            return False
+    # langsung lewat -> lebih berisiko
+     success = random.random() < 0.5
+    if success:
+        print_slow(C.OKGREEN + "Dengan cekatan kau melompati jebakan." + C.ENDC, 0.02) 
+        return True
+    else:
+        dmg = random.randint(5, 12)
+        player.hp -= dmg
+        print_slow(C.FAIL + f"Tanah runtuh! Kau terkena {dmg} kerusakan." + C.ENDC, 0.02)
+        return False
 
 
 def puzzle_riddle(player: Entity):
@@ -142,7 +200,7 @@ def puzzle_riddle(player: Entity):
     attempts = 3
     answers = ("umur", "usia")
     while attempts > 0:
-        jawaban = input(f"Jawabanmu ({attempts} percobaan tersisa): ").strip().lower()
+        jawaban = input_prompt(f"Jawabanmu ({attempts} percobaan tersisa): ").strip().lower()
         if jawaban in answers:
             print_slow(C.OKGREEN + "Benar! Batu itu bergetar dan memberimu energi." + C.ENDC, 0.02)
             heal = 8
@@ -160,11 +218,17 @@ def maybe_elite_encounter(path_name: str, player: Entity):
     # 25% chance muncul musuh elit berbeda berdasarkan jalur
     if random.random() < 0.25:
         if "lembah" in path_name.lower():
-            elite = Entity("Magma Drake 🔥", 30, (8, 13))
+            elite = create_enemy("Magma Drake 🔥", 30, (8, 13), 'elite', player.level)
         else:
-            elite = Entity("Ancient Ent 🌳", 28, (7, 12))
+            elite = create_enemy("Ancient Ent 🌳", 28, (7, 12), 'elite', player.level)
         print_slow(C.HEADER + "! Musuh Elit Muncul !" + C.ENDC, 0.02)
-        return combat(player, elite)
+        res = combat(player, elite)
+        if res == 'victory':
+            award_xp_and_maybe_level(player, elite)
+            return True
+        if res == 'escaped':
+            return True
+        return False
     return True
 
 
@@ -182,25 +246,28 @@ def game_utama():
     )
     print_slow(intro, 0.01)
 
-    nama = input(C.OKGREEN + "Siapa namamu, petualang? " + C.ENDC).strip()
+    nama = input_prompt(C.OKGREEN + "Siapa namamu, petualang? " + C.ENDC).strip()
     if not nama:
         nama = "Arden"
 
     # Buat entitas pemain dan inventory di awal, agar persistent selama sesi
     player = Entity(nama, 30, (5, 9))
+    player.level = 1
+    player.xp = 0
+    player.base_hp = 30
     inventory = {}
 
     print_slow(f"Selamat datang, {nama}. Di depanmu terbentang dua jalur berbahaya namun memikat...", 0.03)
-    print()
+    print_pause()
 
     # Tampilkan pilihan dengan gaya
-    print(C.HEADER + "Pilih jalurmu:" + C.ENDC)
-    print(C.WARNING + "1) Lembah fire   - Lembah berapi, panas dan berkilau dengan kristal magma." + C.ENDC)
-    print(C.OKBLUE + "2) Gunung Bug     - Gunung tinggi yang dipenuhi makhluk-makhluk aneh dan teka-teki." + C.ENDC)
-    print()
+    print_pause(C.HEADER + "Pilih jalurmu:" + C.ENDC)
+    print_pause(C.WARNING + "1) Lembah fire   - Lembah berapi, panas dan berkilau dengan kristal magma." + C.ENDC)
+    print_pause(C.OKBLUE + "2) Gunung Bug     - Gunung tinggi yang dipenuhi makhluk-makhluk aneh dan teka-teki." + C.ENDC)
+    print_pause()
 
     # Ambil input dan gunakan if-else untuk menentukan jalur
-    pilihan = input("Ketik 'Lembah fire' atau 'Gunung Bug' (atau 1/2): ").strip().lower()
+    pilihan = input_prompt("Ketik 'Lembah fire' atau 'Gunung Bug' (atau 1/2): ").strip().lower()
 
     # Sisipkan scene singkat pertemuan lokal dan pertempuran pertama sebelum memilih jalur
     scene_meet_local_and_first_battle(player, inventory)
@@ -212,11 +279,19 @@ def game_utama():
         time.sleep(0.6)
         print_slow("Asap dan panas menyambut langkahmu. Batu-batu menyala dan aliran magma memantulkan bayanganmu.", 0.02)
         print_slow("Di kejauhan, sebuah cahaya biru menyala - sumber kehidupan? Namun untuk mencapainya, kau harus menyeberangi sungai lava yang berbahaya.", 0.02)
-        print()
-        print(C.OKGREEN + "Keputusan berat menanti: mencari alat penyeberangan atau mencoba melompat dengan keberanian." + C.ENDC)
-            # Pertempuran singkat di Lembah fire (menggunakan Entity & combat)
-        enemy = Entity("Flame Warden", 20, (4, 8))
-        combat(player, enemy)
+        print_pause()
+        print_pause(C.OKGREEN + "Keputusan berat menanti: mencari alat penyeberangan atau mencoba melompat dengan keberanian." + C.ENDC)
+        # Tantangan: jebakan sebelum pertempuran
+        trap_encounter(player)
+        enemy = create_enemy("Flame Warden", 20, (4, 8), 'hard', player.level)
+        res = combat(player, enemy)
+        if res == 'dead':
+            return
+        if res == 'victory':
+            award_xp_and_maybe_level(player, enemy)
+        # Mungkin ada musuh elit setelah pertempuran
+        if not maybe_elite_encounter('lembah', player):
+            return
     elif pilihan in ("2", "gunung bug", "gunung", "bug"):
         clear()
         header()
@@ -224,11 +299,19 @@ def game_utama():
         time.sleep(0.6)
         print_slow("Angin dingin memotong wajahmu saat kau menaiki jalur berbatu. Suara gemerisik makhluk kecil bergema di celah-celah batu.", 0.02)
         print_slow("Sebuah gerbang kayu tertutup oleh akar raksasa—di baliknya mungkin ada petunjuk sumber kehidupan yang kau cari.", 0.02)
-        print()
-        print(C.OKGREEN + "Pilihan bijak: merapal mantra membuka gerbang atau mencari jalan memanjat sampingnya." + C.ENDC)
-        # Pertempuran singkat di Gunung Bug (menggunakan Entity & combat)
-        enemy = Entity("Bugling", 18, (3, 6))
-        combat(player, enemy)
+        print_pause()
+        print_pause(C.OKGREEN + "Pilihan bijak: merapal mantra membuka gerbang atau mencari jalan memanjat sampingnya." + C.ENDC)
+        # Tantangan: teka-teki di Gunung Bug sebelum pertempuran
+        puzzle_riddle(player)
+        enemy = create_enemy("Bugling", 18, (3, 6), 'normal', player.level)
+        res = combat(player, enemy)
+        if res == 'dead':
+            return
+        if res == 'victory':
+            award_xp_and_maybe_level(player, enemy)
+        # Mungkin ada musuh elit setelah pertempuran
+        if not maybe_elite_encounter('gunung', player):
+            return
     else:
         print_slow(C.WARNING + "Pilihan tidak dikenali. Silakan jalankan ulang dan pilih 'Lembah fire' atau 'Gunung Bug'." + C.ENDC)
 
@@ -238,11 +321,11 @@ def game_utama():
         clear()
         header()
         print_slow("🌟 Akhir Kisah 🌟", 0.02)
-        print()
+        print_pause()
         print_slow("Arden berhasil menyelesaikan misinya dan menemukan sumber kehidupan yang tersembunyi di dalam Hutan Misterius.", 0.02)
         print_slow("Dengan hati penuh kebanggaan dan keberanian, ia kembali ke desa. Penduduk menyambutnya sebagai pahlawan.", 0.02)
         print_slow("Hutan Misterius kini menjadi tempat yang lebih aman berkat tindakannya.", 0.02)
-        print()
+        print_pause()
         potions = inventory.get('potions', 0)
         if potions:
             print_slow(C.OKGREEN + f"Hadiah yang dibawa pulang: {potions} ramuan penyembuh." + C.ENDC, 0.02)
