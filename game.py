@@ -232,6 +232,22 @@ def game_utama():
     else:
         print_slow(C.WARNING + "Pilihan tidak dikenali. Silakan jalankan ulang dan pilih 'Lembah fire' atau 'Gunung Bug'." + C.ENDC)
 
+    # Jika pemain masih hidup setelah semua tantangan, tampilkan ending
+    if player.hp > 0:
+        time.sleep(0.6)
+        clear()
+        header()
+        print_slow("🌟 Akhir Kisah 🌟", 0.02)
+        print()
+        print_slow("Arden berhasil menyelesaikan misinya dan menemukan sumber kehidupan yang tersembunyi di dalam Hutan Misterius.", 0.02)
+        print_slow("Dengan hati penuh kebanggaan dan keberanian, ia kembali ke desa. Penduduk menyambutnya sebagai pahlawan.", 0.02)
+        print_slow("Hutan Misterius kini menjadi tempat yang lebih aman berkat tindakannya.", 0.02)
+        print()
+        potions = inventory.get('potions', 0)
+        if potions:
+            print_slow(C.OKGREEN + f"Hadiah yang dibawa pulang: {potions} ramuan penyembuh." + C.ENDC, 0.02)
+        print_slow(C.OKCYAN + "=== SELAMAT! Misi Terselesaikan ===" + C.ENDC, 0.03)
+
 
 if __name__ == "__main__":
     game_utama()
