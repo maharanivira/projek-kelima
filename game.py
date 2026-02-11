@@ -48,8 +48,8 @@ def combat(player: Entity, enemy: Entity):
     print_slow(f"Tiba-tiba, {enemy.name} muncul dari balik bayangan!", 0.02)
     while enemy.hp > 0 and player.hp > 0:
         print(f"\nNyawamu: {player.hp}  |  {enemy.name} HP: {enemy.hp}")
-        aksi = input("Pilih aksi ('serang' atau 'lari'): ").strip().lower()
-        if aksi in ("serang", "s"):
+        aksi = input("Pilih aksi: 1) Serang   2) Lari  -> ").strip().lower()
+        if aksi in ("1", "serang", "s"):
             dmg = player.attack()
             enemy.hp -= dmg
             print_slow(C.OKGREEN + f"Kau menyerang dan memberi {dmg} kerusakan!" + C.ENDC, 0.01)
@@ -59,7 +59,7 @@ def combat(player: Entity, enemy: Entity):
             edmg = enemy.attack()
             player.hp -= edmg
             print_slow(C.FAIL + f"{enemy.name} menyerang balik dan memberikan {edmg} kerusakan!" + C.ENDC, 0.01)
-        elif aksi in ("lari", "l"):
+        elif aksi in ("2", "lari", "l"):
             print_slow(C.WARNING + "Kau memilih mundur dengan cepat, selamat... untuk sekarang." + C.ENDC, 0.02)
             return True
         else:
@@ -170,6 +170,7 @@ def maybe_elite_encounter(path_name: str, player: Entity):
 
 
 def game_utama():
+   
     clear()
     header()
     # Pembukaan cerita (lanjutan dari teks pengguna)
